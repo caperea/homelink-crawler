@@ -1,3 +1,7 @@
+# VIM temp files
+*.swp
+
+# python temp files
 *.py[cod]
 
 # C extensions
