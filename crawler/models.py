@@ -1,11 +1,5 @@
 from django.db import models
 
-class Listing(models.Model):
-    hlid = models.CharField(max_length=64, unique=True, null=False)
-    updated = models.BooleanField(default=False)
-    time_added = models.DateTimeField(auto_now_add=True)
-    time_updated = models.DateTimeField(auto_now=True)
-
 class District(models.Model):
     hlid = models.CharField(max_length=4, unique=True, null=False)
     desc = models.CharField(max_length=8)
@@ -15,6 +9,12 @@ class Subdistrict(models.Model):
     dist = models.ForeignKey(District)
     desc = models.CharField(max_length=16)
     updated = models.BooleanField(default=False)
+
+class Listing(models.Model):
+    hlid = models.CharField(max_length=64, unique=True, null=False)
+    subdist = models.ForeignKey(Subdistrict)
+    updated = models.BooleanField(default=False)
+    time_added = models.DateTimeField(auto_now_add=True)
 
 class Community(models.Model):
     name = models.CharField(max_length=64)

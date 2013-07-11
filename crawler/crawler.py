@@ -14,17 +14,18 @@ def crawl_item_count(url):
     try:
         raw = urllib2.urlopen(url).read()
     except:
+        print 'ERROR: urllib2.urlopen(%s).read:' % url
         return 0
     doc = x.document_fromstring(raw)
     entries = doc.xpath('/html/body/div[3]/span')
     if len(entries) != 1:
+        print 'ERROR:', entries
         return 0
     return int(entries[0].text)
 
 def crawl_page_listing(url):
     import urllib2
     import lxml.html as x
-    from models import Listing
     
     try:
         raw = urllib2.urlopen(url).read()
@@ -33,22 +34,38 @@ def crawl_page_listing(url):
         return
     doc = x.document_fromstring(raw)
     links = doc.xpath('//h3/span/a/@href')
-    listing = [link.split('/')[-1].split('.')[0] for link in links]
-    for i in listing:
-        item = Listing(hlid = i)
-        try:
-            item.save()
-        except:
-            pass
+    return [link.split('/')[-1].split('.')[0] for link in links]
 
-def crawl_full_listing(url=BASE_URL):
+def crawl_district_listing(url=BASE_URL):
     from multiprocessing import Pool
 
     n_entries = crawl_item_count(url)
+    print n_entries,
     n_pages = int(n_entries / ITEM_PER_PAGE + 1)
-    print n_pages, 'pages'
     pool = Pool(NUM_WORKERS)
-    pool.map(crawl_page_listing, [url + PAGE_SFX % p for p in range(1, n_entries+1)])
+    l = pool.map(crawl_page_listing, [url + PAGE_SFX % p for p in range(1, n_pages + 1)])
+    listing = []
+    for sl in l:
+            listing += sl
+    print len(listing)
+    return listing
+
+def crawl_listing():
+    from models import Subdistrict, Listing
+    subdists = Subdistrict.objects.all().order_by('hlid')
+    for sd in subdists:
+        if sd.updated:
+            continue
+        print sd.dist.desc, sd.desc, sd.hlid
+        listing = crawl_district_listing(BASE_URL + DIST_SFX % (sd.dist.hlid + sd.hlid))
+        for i in listing:
+            le = Listing(hlid=i, subdist=sd)
+            try:
+                le.save()
+            except:
+                pass
+        sd.updated = True
+        sd.save()
 
 def crawl_districts():
     import urllib2
