@@ -10,32 +10,33 @@ class Subdistrict(models.Model):
     desc = models.CharField(max_length=16)
     updated = models.BooleanField(default=False)
 
-class Listing(models.Model):
-    hlid = models.CharField(max_length=64, unique=True, null=False)
-    subdist = models.ForeignKey(Subdistrict)
-    updated = models.BooleanField(default=False)
-    time_added = models.DateTimeField(auto_now_add=True)
-
 class Community(models.Model):
-    name = models.CharField(max_length=64)
-    dist = models.ForeignKey(Subdistrict)
+    desc = models.CharField(max_length=32)
     addr = models.CharField(max_length=128)
     link = models.CharField(max_length=64, unique=True)
-    desc = models.CharField(max_length=255, null=True)
+    detail = models.CharField(max_length=255, null=True)
     time_added = models.DateTimeField(auto_now_add=True)
     time_updated = models.DateTimeField(auto_now=True)
 
 class RealEstate(models.Model):
-    hlid = models.ForeignKey(Listing)
-    desc = models.CharField(max_length=255)
-    community = models.ForeignKey(Community)
-    nbedrm = models.IntegerField()
-    nlvnrm = models.IntegerField()
-    area = models.FloatField()
-    price = models.FloatField()
-    facing = models.CharField(max_length=8)
-    in_sale = models.BooleanField(default=False)
+    hlid = models.CharField(max_length=64, unique=True, null=False)
+    desc = models.CharField(max_length=255, null=True)
+    community = models.ForeignKey(Community, null=True)
+    nbedrm = models.IntegerField(null=True)
+    nlvnrm = models.IntegerField(null=True)
+    area = models.FloatField(null=True)
+    price = models.FloatField(null=True)
+    facing = models.CharField(max_length=8, null=True)
+    in_sale = models.BooleanField(default=True)
     duty_free = models.BooleanField(default=False)
     edu_district = models.BooleanField(default=False)
     time_added = models.DateTimeField(auto_now_add=True)
     time_updated = models.DateTimeField(auto_now=True)
+
+class EstateZoning(models.Model):
+    estate = models.ForeignKey(RealEstate)
+    subdist = models.ForeignKey(Subdistrict)
+    time_added = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('estate', 'subdist')

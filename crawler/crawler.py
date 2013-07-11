@@ -7,6 +7,12 @@ PAGE_SFX = 'pg%d/'
 NUM_WORKERS = 5
 ITEM_PER_PAGE = 12
 
+def url_for_d_estate_list(d):
+    return BASE_URL + DIST_SFX % dist.hlid
+
+def url_for_sd_estate_list(sd):
+    return BASE_URL + DIST_SFX % (sd.dist.hlid + sd.hlid)
+
 def crawl_item_count(url):
     import urllib2
     import lxml.html as x
@@ -23,7 +29,7 @@ def crawl_item_count(url):
         return 0
     return int(entries[0].text)
 
-def crawl_page_listing(url):
+def crawl_estate_list_in_page(url):
     import urllib2
     import lxml.html as x
     
@@ -36,32 +42,39 @@ def crawl_page_listing(url):
     links = doc.xpath('//h3/span/a/@href')
     return [link.split('/')[-1].split('.')[0] for link in links]
 
-def crawl_district_listing(url=BASE_URL):
+def crawl_estate_list_in_district(url=BASE_URL):
     from multiprocessing import Pool
 
     n_entries = crawl_item_count(url)
     print n_entries,
     n_pages = int(n_entries / ITEM_PER_PAGE + 1)
     pool = Pool(NUM_WORKERS)
-    l = pool.map(crawl_page_listing, [url + PAGE_SFX % p for p in range(1, n_pages + 1)])
+    l = pool.map(crawl_estate_list_in_page, [url + PAGE_SFX % p for p in range(1, n_pages + 1)])
     listing = []
     for sl in l:
             listing += sl
     print len(listing)
+    # attempt to solve 'Too may open files' issue
+    pool.terminate()
     return listing
 
-def crawl_listing():
-    from models import Subdistrict, Listing
+def crawl_estate_list():
+    from models import Subdistrict, RealEstate, EstateZoning
     subdists = Subdistrict.objects.all().order_by('hlid')
     for sd in subdists:
         if sd.updated:
             continue
         print sd.dist.desc, sd.desc, sd.hlid
-        listing = crawl_district_listing(BASE_URL + DIST_SFX % (sd.dist.hlid + sd.hlid))
-        for i in listing:
-            le = Listing(hlid=i, subdist=sd)
+        l = crawl_estate_list_in_district(url_for_sd_estate_list(sd))
+        for i in l:
             try:
-                le.save()
+                estate = RealEstate.get(hlid=i)
+            except:
+                estate = RealEstate(hlid=i)
+                estate.save()
+            ez = EstateZoning(estate=estate, subdist=sd)
+            try:
+                ez.save()
             except:
                 pass
         sd.updated = True
@@ -95,7 +108,7 @@ def crawl_subdistricts():
     dists = District.objects.all()
     for dist in dists:
         try:
-            raw = urllib2.urlopen(BASE_URL + DIST_SFX % dist.hlid).read().decode('utf8')
+            raw = urllib2.urlopen(url_for_d_estate_list(dist)).read().decode('utf8')
         except:
             print 'ERROR: urllib2.urlopen(%s).read().decode(\'utf8\'):' % BASE_URL
             continue
@@ -107,3 +120,10 @@ def crawl_subdistricts():
                 sd.save()
             except:
                 pass
+
+
+def crawl_community_detail():
+    pass
+
+def crawl_estate_detail():
+    pass
