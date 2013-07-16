@@ -30,6 +30,7 @@ class RealEstate(models.Model):
     in_sale = models.BooleanField(default=True)
     duty_free = models.BooleanField(default=False)
     edu_district = models.BooleanField(default=False)
+    updated = models.BooleanField(default=False)
     time_added = models.DateTimeField(auto_now_add=True)
     time_updated = models.DateTimeField(auto_now=True)
 
