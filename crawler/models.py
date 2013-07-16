@@ -11,9 +11,9 @@ class Subdistrict(models.Model):
     updated = models.BooleanField(default=False)
 
 class Community(models.Model):
+    hlid = models.CharField(max_length=64, unique=True)
     desc = models.CharField(max_length=32)
     addr = models.CharField(max_length=128)
-    link = models.CharField(max_length=64, unique=True)
     detail = models.CharField(max_length=255, null=True)
     time_added = models.DateTimeField(auto_now_add=True)
     time_updated = models.DateTimeField(auto_now=True)
