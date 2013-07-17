@@ -115,12 +115,15 @@ def update_subdistricts():
 
 def crawl_estates(update=False):
     from models import RealEstate
+    from multiprocessing import Pool
     if update:
         estates = RealEstate.objects.all()
     else:
         estates = RealEstate.objects.filter(updated=0)
-    for e in estates:
-        e = update_estate_detail(e)
+    #for e in estates:
+    #    e = update_estate_detail(e)
+    pool = Pool(NUM_WORKERS)
+    pool.map(update_estate_detail, estates)
 
 def update_community_detail(hlid):
     from models import Community
@@ -129,7 +132,8 @@ def update_community_detail(hlid):
     comm.desc = doc.xpath('/html/body/div[3]/div[1]/ul/h1')[0].text
     comm.addr = doc.xpath('/html/body/div[3]/div[3]/div[1]/div[1]/dl[1]/dd[2]')[0].text
     comm.detail = doc.xpath('/html/body/div[3]/div[3]/div[1]/div[2]/div[2]')[0].text.strip()
-    print 'Community:', comm.desc, comm.addr
+    #print 'Community:', comm.desc, comm.addr
+    print '*',
     comm.save()
 
 def update_estate_detail(estate):
@@ -143,7 +147,7 @@ def update_estate_detail(estate):
     except URLError:
         print 'URLError!'
         return
-    if doc.xpath('/html/body/div[6]/div[1]/p'): # not found
+    if '抱歉，没有找到符合您要求的房源！'.decode('utf8') in doc.text_content():
         estate.in_sale = False
         print 'SOLD'
     else:
@@ -165,6 +169,6 @@ def update_estate_detail(estate):
             estate.duty_free = True
         if '学区房'.decode('utf8') in features:
             estate.edu_district = True
-        print 'Estate:', estate.desc, estate.price, estate.area
+        print estate.community.desc, estate.desc, estate.price, estate.area
     estate.updated = True
     estate.save()
