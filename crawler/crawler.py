@@ -9,7 +9,7 @@ PAGE_SFX = 'ershoufang/pg%d/'
 COMM_SFX = '%s/xq/'
 ESTATE_SFX = 'ershoufang/%s.shtml'
 
-NUM_WORKERS = 10
+NUM_WORKERS = 3
 ITEM_PER_PAGE = 12
 
 def url_from_district(d):
@@ -67,8 +67,17 @@ def crawl_estate_list_in_district(url=BASE_URL):
     pool.terminate()
     return listing
 
+def mark_subdist_need_update(subdist):
+    if '__iter__' in dir(subdist):
+        for sd in subdist:
+            sd.updated = False
+            sd.save()
+    else:
+        sd.updated = False
+        sd.save()
+
 def update_estate_list():
-    from models import Subdistrict, RealEstate, EstateZoning
+    from models import Subdistrict, RealEstate
     from django.core.exceptions import MultipleObjectsReturned, ObjectDoesNotExist
     from time import time
     subdists = Subdistrict.objects.filter(updated=0).order_by('hlid')
@@ -76,10 +85,8 @@ def update_estate_list():
         print sd.dist.desc, sd.desc, sd.hlid
         l = crawl_estate_list_in_district(url_from_subdistrict(sd))
         for i in l:
-            e, c = RealEstate.objects.get_or_create(hlid=i)
+            e, c = RealEstate.objects.get_or_create(hlid=i, defaults={'subdist':sd})
             e.save()
-            ez, c = EstateZoning.objects.get_or_create(estate=e, subdist=sd)
-            ez.save()
         sd.updated = True
         sd.save()
 
