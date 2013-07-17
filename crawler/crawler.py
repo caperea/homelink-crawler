@@ -9,7 +9,7 @@ PAGE_SFX = 'ershoufang/pg%d/'
 COMM_SFX = '%s/xq/'
 ESTATE_SFX = 'ershoufang/%s.shtml'
 
-NUM_WORKERS = 5
+NUM_WORKERS = 10
 ITEM_PER_PAGE = 12
 
 def url_from_district(d):
@@ -113,13 +113,41 @@ def update_subdistricts():
             except:
                 pass
 
-def crawl_estates(update=False):
-    from models import RealEstate
+def get_subdist_by_hlid(hlid):
+    from models import Subdistrict
+    from django.core.exceptions import ObjectDoesNotExist
+    # does not handle ObjectDoesNotExist excption here
+    return Subdistrict.objects.get(hlid=hlid)
+
+def get_subdists_by_desc(desc):
+    from models import Subdistrict
+    return Subdistrict.objects.filter(desc__contains=desc)
+
+def get_dist_by_desc(desc):
+    from models import District
+    return District.objects.get(desc=desc)
+
+def crawl_estates(dist=None, update=False):
+    from models import RealEstate, Subdistrict, District
     from multiprocessing import Pool
-    if update:
-        estates = RealEstate.objects.all()
+    from django.core.exceptions import ObjectDoesNotExist
+    
+    if not update:
+        e = RealEstate.objects.filter(updated=0)
+    if '__iter__' in dir(dist): # in case of empty list
+        estates = []
+        # FIXME: not returning QuerySet!!!
+        for sd in dist:
+            estates += e.filter(subdist=dist)
+    elif dist:
+        if dist.__class__ == Subdistrict:
+            estates = e.filter(subdist=dist)
+        elif dist.__class__ == District:
+            estates = e.filter(subdist__dist=dist)
+        else:
+            raise TypeError
     else:
-        estates = RealEstate.objects.filter(updated=0)
+        estates = e
     #for e in estates:
     #    e = update_estate_detail(e)
     pool = Pool(NUM_WORKERS)
@@ -169,10 +197,10 @@ def update_estate_detail(estate):
         estate.price = float(doc.xpath('/html/body/div[6]/div[2]/div[1]/ul/li[2]/span')[0].text)
         estate.facing = doc.xpath('/html/body/div[6]/div[2]/div[2]/ol/li[2]')[0].text.split('：'.decode('utf8'))[1]
         estate.in_sale = True
-        features = [f.text for f in doc.xpath('/html/body/div[5]/ol/label')]
-        if '免税'.decode('utf8') in features:
+        features = [f.text.encode('utf8') for f in doc.xpath('/html/body/div[5]/ol/label')]
+        if '免税' in features:
             estate.duty_free = True
-        if '学区房'.decode('utf8') in features:
+        if '学区房' in features:
             estate.edu_district = True
         print estate.community.desc, estate.desc, estate.price, estate.area
     estate.updated = True
