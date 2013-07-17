@@ -123,7 +123,12 @@ def crawl_estates(update=False):
     #for e in estates:
     #    e = update_estate_detail(e)
     pool = Pool(NUM_WORKERS)
-    pool.map(update_estate_detail, estates)
+    p = pool.map_async(update_estate_detail_pool_worker, estates)
+    try:
+        p.get(0xFFFF)
+    except KeyboardInterrupt:
+        pool.terminate()
+        return
 
 def update_community_detail(hlid):
     from models import Community
@@ -172,3 +177,9 @@ def update_estate_detail(estate):
         print estate.community.desc, estate.desc, estate.price, estate.area
     estate.updated = True
     estate.save()
+
+def update_estate_detail_pool_worker(estate):
+    try:
+        update_estate_detail(estate)
+    except KeyboardInterrupt:
+        pass
