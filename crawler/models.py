@@ -35,10 +35,3 @@ class RealEstate(models.Model):
     time_added = models.DateTimeField(auto_now_add=True)
     time_updated = models.DateTimeField(auto_now=True)
 
-class EstateZoning(models.Model):
-    estate = models.ForeignKey(RealEstate)
-    subdist = models.ForeignKey(Subdistrict)
-    time_added = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        unique_together = ('estate', 'subdist')
