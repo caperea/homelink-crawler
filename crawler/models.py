@@ -28,9 +28,13 @@ class RealEstate(models.Model):
     area = models.FloatField(null=True)
     price = models.FloatField(null=True)
     facing = models.CharField(max_length=8, null=True)
+    floor = models.CharField(max_length=16, null=True)
+    decoration = models.CharField(max_length=8, null=True)
     in_sale = models.BooleanField(default=True)
     duty_free = models.BooleanField(default=False)
     edu_district = models.BooleanField(default=False)
+    nvisitor = models.IntegerField(null=True) #null=True for backward compatibility
+    ncomment = models.IntegerField(null=True) #will remove later
     updated = models.BooleanField(default=False)
     time_added = models.DateTimeField(auto_now_add=True)
     time_updated = models.DateTimeField(auto_now=True)
