@@ -131,15 +131,13 @@ def crawl_estate_in_page(url):
         try:
             estate.save()
         except DatabaseError:
-            try:
-                estate.save()
-            except DatabaseError:
-                from sys import exit
-                exit(-1)
-            except IntegrityError:
-                pass
-        except IntegrityError:
             pass
+        except IntegrityError:
+            estate, created = RealEstate.objects.get_or_create(hlid=e['hlid'], defaults=e)
+            if not created:
+                for k in e:
+                    setattr(estate, k, e[k])
+            estate.save()
     return ret
 
 def crawl_estate_in_district(dist):
@@ -166,7 +164,7 @@ def do_crawl_estate_in_district(dist):
     p = pool.map_async(crawl_estate_in_page_pool_worker, [url + PAGE_SFX % p for p in range(1, n_pages + 1)])
     try:
         results = p.get(0xFFFF)
-    except KeyboardInterrupt:
+    except:
         pool.terminate()
         results = 0
     n_found = 0
@@ -181,7 +179,6 @@ def do_crawl_estate_in_district(dist):
 
 def update_estate():
     from models import Subdistrict, RealEstate
-    from django.core.exceptions import MultipleObjectsReturned, ObjectDoesNotExist
     from time import time
     subdists = Subdistrict.objects.filter(updated=0).order_by('hlid')
     for sd in subdists:
@@ -223,7 +220,6 @@ def update_subdistricts():
 def crawl_estates_detail(dist=None, update=False):
     from models import RealEstate, Subdistrict, District
     from multiprocessing import Pool
-    from django.core.exceptions import ObjectDoesNotExist
     
     if not update:
         e = RealEstate.objects.filter(updated=0)
