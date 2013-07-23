@@ -5,7 +5,7 @@ CITY = 'beijing'
 BASE_URL='http://%s.homelink.com.cn/' % CITY
 ESTATE_URL = BASE_URL + 'ershoufang/%s.shtml'
 DIST_SFX = 'ershoufang/%s/'
-PAGE_SFX = 'ershoufang/pg%d/'
+PAGE_SFX = 'pg%d/'
 COMM_SFX = '%s/xq/'
 ESTATE_SFX = 'ershoufang/%s.shtml'
 
@@ -28,16 +28,47 @@ def doc_from_url(url, encoding='utf8'):
     import urllib2
     import lxml.html as x
     raw = urllib2.urlopen(url).read()
-    #try:
-    #    raw = urllib2.urlopen(url).read()
-    #except:
-    #    print 'ERROR: urllib2.urlopen(%s).read:' % url
-    #    return []
     if encoding:
         raw = raw.decode(encoding)
     return x.document_fromstring(raw)
 
-def crawl_item_count(url):
+def subdist_from_hlid(hlid):
+    from models import Subdistrict
+    # does not handle ObjectDoesNotExist excption here
+    return Subdistrict.objects.get(hlid=hlid)
+
+def subdist_from_desc(desc):
+    from models import Subdistrict
+    return Subdistrict.objects.filter(desc__contains=desc)
+
+def dist_from_hlid(hlid):
+    from models import Subdistrict
+    # does not handle ObjectDoesNotExist excption here
+    return District.objects.get(hlid=hlid)
+
+def dist_from_desc(desc):
+    from models import District
+    return District.objects.filter(desc__contains=desc)
+
+def mark_need_update(obj):
+    from models import Subdistrict
+    if 'ALL' == obj:
+        obj = Subdistrict.objects.all()
+    if '__iter__' in dir(obj):
+        for o in obj:
+            do_mark_need_update(o)
+    else:
+        do_mark_need_update(obj)
+
+def do_mark_need_update(dist):
+    dist.updated = False
+    dist.save()
+
+def do_mark_subdist_need_update(obj):
+    obj.updated = False
+    obj.save()
+
+def get_estate_count(url):
     doc = doc_from_url(url)
     entries = doc.xpath('/html/body/div[3]/span')
     if len(entries) != 1:
@@ -45,48 +76,114 @@ def crawl_item_count(url):
         return -1
     return int(entries[0].text)
 
-def crawl_estate_list_in_page(url):
-    doc = doc_from_url(url)
-    links = doc.xpath('//h3/span/a/@href')
-    return [link.split('/')[-1].split('.')[0] for link in links]
+def crawl_estate_in_page_pool_worker(url):
+    try:
+        return crawl_estate_in_page(url)
+    except KeyboardInterrupt, e:
+        raise e
+    except Exception, e:
+        raise e
 
-def crawl_estate_list_in_district(url=BASE_URL):
-    from multiprocessing import Pool
-
-    n_entries = crawl_item_count(url)
-    print n_entries,
-    n_pages = int(n_entries / ITEM_PER_PAGE + 1)
-    pool = Pool(NUM_WORKERS)
-    l = pool.map(crawl_estate_list_in_page, [url + PAGE_SFX % p for p in range(1, n_pages + 1)])
-    listing = []
-    if l:
-        for sl in l:
-            listing += sl
-    print len(listing)
-    # attempt to solve 'Too may open files' issue
-    pool.terminate()
-    return listing
-
-def mark_subdist_need_update(subdist):
-    if '__iter__' in dir(subdist):
-        for sd in subdist:
-            sd.updated = False
-            sd.save()
-    else:
-        sd.updated = False
-        sd.save()
-
-def update_estate_list():
-    from models import Subdistrict, RealEstate
+def crawl_estate_in_page(url):
+    from models import RealEstate, Community
+    from urllib2 import URLError
     from django.core.exceptions import MultipleObjectsReturned, ObjectDoesNotExist
+    from MySQLdb import DatabaseError
+    try:
+        doc = doc_from_url(url)
+    except URLError:
+        print 'URLError!'
+        return
+    entries = doc.xpath('//div[@id="listData"]/div')
+    ret = 0
+    for entry in entries:
+        ret += 1
+        e = dict()
+        c_hlid = entry.xpath('div[2]/ul/li[1]/a/@href')[0][1:-1]
+        try:
+            e['community'] = Community.objects.get(hlid=c_hlid)
+        except ObjectDoesNotExist:
+            update_community_detail(c_hlid)
+            e['community'] = Community.objects.get(hlid=c_hlid)
+        e['hlid'] = entry.xpath('h3/span/a/@href')[0].split('/')[2].split('.')[0]
+        # if subdist not found in db, and exception is expected (for now)
+        e['subdist'] = subdist_from_hlid(hlid='b' + url.split('/')[4].split('b')[1])
+        e['desc'] = entry.xpath('h3/span/a')[0].text
+        e['nbedrm'] = int(entry.xpath('div[2]/ul/li[2]/span[1]')[0].text)
+        e['nlvnrm'] = int(entry.xpath('div[2]/ul/li[2]/span[2]')[0].text)
+        e['area'] = float(entry.xpath('div[2]/ul/li[3]/span')[0].text)
+        e['price'] = float(entry.xpath('div[3]/ul/b')[0].text)
+        e['floor'], e['facing'], e['decoration'] = entry.xpath('div[2]/p')[0].text.split()[0].split(',')
+        e['nvisitor'] = int(entry.xpath('div[4]/span[1]/label')[0].text)
+        e['ncomment'] = int(entry.xpath('div[4]/span[2]/label')[0].text)
+        e['in_sale'] = True
+        features = [f.text.encode('utf8') for f in entry.xpath('div[2]/ol/label')]
+        if '免税' in features:
+            e['duty_free'] = True
+        if '学区房' in features:
+            e['edu_district'] = True
+        print e['hlid'], e['community'].desc, e['desc'], e['price'], e['area']
+        e['updated'] = True
+        estate, created = RealEstate.objects.get_or_create(hlid=e['hlid'], defaults=e)
+        if not created:
+            for k in e:
+                setattr(estate, k, e[k])
+        try:
+            estate.save()
+        except DatabaseError:
+            pass
+        except IntegrityError:
+            estate, created = RealEstate.objects.get_or_create(hlid=e['hlid'], defaults=e)
+            if not created:
+                for k in e:
+                    setattr(estate, k, e[k])
+            estate.save()
+    return ret
+
+def crawl_estate_in_district(dist):
+    if '__iter__' in dir(dist):
+        for d in dist:
+            do_crawl_estate_in_district(d)
+    else:
+        do_crawl_estate_in_district(dist)
+
+def do_crawl_estate_in_district(dist):
+    from multiprocessing import Pool
+    from models import District, Subdistrict
+    if dist.__class__ is District:
+        url = url_from_district(dist)
+    elif dist.__class__ is Subdistrict:
+        url = url_from_subdistrict(dist)
+    else:
+        raise TypeError
+    n_estates = get_estate_count(url)
+    n_pages = (n_estates -1) / ITEM_PER_PAGE + 1
+    pool = Pool(NUM_WORKERS)
+    # used to be:
+    # results = pool.map(crawl_estate_in_page, [url + PAGE_SFX % p for p in range(1, n_pages + 1)])
+    p = pool.map_async(crawl_estate_in_page_pool_worker, [url + PAGE_SFX % p for p in range(1, n_pages + 1)])
+    try:
+        results = p.get(0xFFFF)
+    except:
+        pool.terminate()
+        results = 0
+    n_found = 0
+    if results:
+        for r in results:
+            n_found += r
+    print n_estates, '/', n_found
+    # attempt to solve 'Too may open files' issue:
+    #pool.terminate()
+    return n_found == n_estates
+
+
+def update_estate():
+    from models import Subdistrict, RealEstate
     from time import time
     subdists = Subdistrict.objects.filter(updated=0).order_by('hlid')
     for sd in subdists:
         print sd.dist.desc, sd.desc, sd.hlid
-        l = crawl_estate_list_in_district(url_from_subdistrict(sd))
-        for i in l:
-            e, c = RealEstate.objects.get_or_create(hlid=i, defaults={'subdist':sd})
-            e.save()
+        crawl_estate_in_district(sd)
         sd.updated = True
         sd.save()
 
@@ -120,30 +217,16 @@ def update_subdistricts():
             except:
                 pass
 
-def get_subdist_by_hlid(hlid):
-    from models import Subdistrict
-    from django.core.exceptions import ObjectDoesNotExist
-    # does not handle ObjectDoesNotExist excption here
-    return Subdistrict.objects.get(hlid=hlid)
-
-def get_subdists_by_desc(desc):
-    from models import Subdistrict
-    return Subdistrict.objects.filter(desc__contains=desc)
-
-def get_dist_by_desc(desc):
-    from models import District
-    return District.objects.get(desc=desc)
-
-def crawl_estates(dist=None, update=False):
+def crawl_estates_detail(dist=None, update=False):
     from models import RealEstate, Subdistrict, District
     from multiprocessing import Pool
-    from django.core.exceptions import ObjectDoesNotExist
     
     if not update:
         e = RealEstate.objects.filter(updated=0)
     if '__iter__' in dir(dist): # in case of empty list
         estates = []
         # FIXME: not returning QuerySet!!!
+        # FIXME: hence no support for list of dists
         for sd in dist:
             estates += e.filter(subdist=dist)
     elif dist:
@@ -155,15 +238,12 @@ def crawl_estates(dist=None, update=False):
             raise TypeError
     else:
         estates = e
-    #for e in estates:
-    #    e = update_estate_detail(e)
     pool = Pool(NUM_WORKERS)
     p = pool.map_async(update_estate_detail_pool_worker, estates)
     try:
         p.get(0xFFFF)
-    except KeyboardInterrupt:
+    except:
         pool.terminate()
-        return
 
 def update_community_detail(hlid):
     from models import Community
@@ -216,5 +296,6 @@ def update_estate_detail(estate):
 def update_estate_detail_pool_worker(estate):
     try:
         update_estate_detail(estate)
-    except KeyboardInterrupt:
+    except KeyboardInterrupt, e:
+        # TODO: why not raise it?
         pass
